@@ -13,9 +13,13 @@ namespace CameraRollSorter
 {
     class Program
     {
+        public const string dateTimePattern = "yyyy:MM:dd HH:mm:ss";
+
+        public const string dateTimePatternFS = "ddd MMM dd HH:mm:ss zzz yyyy"; // Wed Dec 17 22:56:46 -08:00 2008
+
         static void Main(string[] args)
         {
-            const string dateTimePattern = "yyyy:MM:dd HH:mm:ss";
+            
             Trace.Listeners.Add(new ConsoleTraceListener());
             Trace.Listeners.Add(new DefaultTraceListener());
                   
@@ -25,22 +29,9 @@ namespace CameraRollSorter
             {
                 try
                 {
-                    IEnumerable<MetadataExtractor.Directory> directories = ImageMetadataReader.ReadMetadata(file);
-                    var subIfdDirectory = directories.OfType<ExifIfd0Directory>().FirstOrDefault();
-                    var dateTime = subIfdDirectory?.GetDescription(ExifIfd0Directory.TagDateTime);
-                    if(string.IsNullOrEmpty(dateTime))
-                    {
-                        var alternateSubIfdDirectory = directories.OfType<ExifSubIfdDirectory>().FirstOrDefault();
-                        dateTime = alternateSubIfdDirectory?.GetDescription(ExifSubIfdDirectory.TagDateTimeOriginal);
-                    }
-
-                    if (string.IsNullOrEmpty(dateTime))
-                    {
-                        Debugger.Break();
-                    }
-
-                    Trace.WriteLine($"File: {file}, DateTime: {dateTime}");
-                    if (DateTime.TryParseExact(dateTime, dateTimePattern, null, System.Globalization.DateTimeStyles.None, out DateTime imageDate))
+                    var imageDate = GetDateCreated(file);
+                    Trace.WriteLine($"File: {file}, DateTime: {imageDate}");
+                    if (imageDate != DateTime.MinValue)
                     {
                         var imageYear = imageDate.Year;
                         var imageMonth = imageDate.Month;
@@ -59,7 +50,21 @@ namespace CameraRollSorter
                             System.IO.Directory.CreateDirectory(yearMonthDir);
                         }
 
-                        File.Copy(file, GetPhotoFileName(file, imageMonth.ToString("00"), imageDate.Day.ToString("00"), fullYear));
+                        var photoFileName = GetPhotoFileName(file, yearMonthDir, imageMonth.ToString("00"), imageDate.Day.ToString("00"), fullYear);
+
+                        Trace.WriteLine($"Copy {file} to {photoFileName}");
+
+                        File.Copy(file, photoFileName);
+
+                        var backupFilename = Path.Combine(@"G:\OlderPictures\Completed", Path.GetFileName(file));
+
+                        Trace.WriteLine($"Moving {file} to {backupFilename}");
+                        File.Move(file, backupFilename);
+                    }
+                    else
+                    {
+                        Trace.WriteLine($"Couldn't parse proper DateTime from : {file}");
+                        Debugger.Break();
                     }
                 }
                 catch
@@ -69,17 +74,49 @@ namespace CameraRollSorter
             }
         }
 
-        public static string GetPhotoFileName(string originalFilename, string month, string day, string year)
+        public static string GetPhotoFileName(string originalFilename, string destination, string month, string day, string year)
         {
             int index = 1;
             string extension = Path.GetExtension(originalFilename);
-            string newFileName = Path.Combine(Path.GetDirectoryName(originalFilename), $"{year}{month}{day}_{index.ToString("0000")}{extension}");
+            string newFileName = Path.Combine(destination, $"{year}{month}{day}_{index.ToString("0000")}{extension}");
             while(File.Exists(newFileName))
             {
-                newFileName = Path.Combine(Path.GetDirectoryName(newFileName), $"{year}{month}{day}_{index.ToString("0000")}{extension}");
                 index++;
+                newFileName = Path.Combine(destination, $"{year}{month}{day}_{index.ToString("0000")}{extension}");
             }
             return newFileName;
+        }
+
+        public static DateTime GetDateCreated(string fileName)
+        {
+            IEnumerable<MetadataExtractor.Directory> directories = ImageMetadataReader.ReadMetadata(fileName);
+            var alternateSubIfdDirectory = directories.OfType<ExifSubIfdDirectory>().FirstOrDefault();
+            var dateTime = alternateSubIfdDirectory?.GetDescription(ExifSubIfdDirectory.TagDateTimeOriginal);
+            DateTime imageDateTime;
+
+            if (string.IsNullOrEmpty(dateTime))
+            {
+                var subIfdDirectory = directories.OfType<ExifIfd0Directory>().FirstOrDefault();
+                dateTime = subIfdDirectory?.GetDescription(ExifIfd0Directory.TagDateTime);
+            }
+
+            if (string.IsNullOrEmpty(dateTime))
+            {
+                var fileCreateTime = directories.OfType<MetadataExtractor.Formats.FileSystem.FileMetadataDirectory>().FirstOrDefault();
+                dateTime = fileCreateTime?.GetDescription(MetadataExtractor.Formats.FileSystem.FileMetadataDirectory.TagFileModifiedDate);
+            }
+
+            if (string.IsNullOrEmpty(dateTime))
+            {
+                Debugger.Break();
+            }
+
+            if(!DateTime.TryParseExact(dateTime, dateTimePattern, null, System.Globalization.DateTimeStyles.None, out imageDateTime))
+            {
+                DateTime.TryParseExact(dateTime, dateTimePatternFS, null, System.Globalization.DateTimeStyles.None, out imageDateTime);
+            }
+
+            return imageDateTime;
         }
     }
 }
