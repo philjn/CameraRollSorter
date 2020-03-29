@@ -22,9 +22,23 @@ namespace CameraRollSorter
             
             Trace.Listeners.Add(new ConsoleTraceListener());
             Trace.Listeners.Add(new DefaultTraceListener());
-                  
-            string imagesDirectory = @"G:\OlderPictures\Bulk";
-            IEnumerable<string> files = System.IO.Directory.EnumerateFiles(imagesDirectory, "*.*", SearchOption.TopDirectoryOnly);
+            Trace.Listeners.Add(new TextWriterTraceListener(DateTime.Now.ToString("yyyy-MM-dd-HH-mm") +".log"));
+
+            string imagesDirectory = args[0];
+            string outputDirectory = args[1];
+            string backupDirectory = args[2];
+
+            if (!System.IO.Directory.Exists(outputDirectory))
+            {
+                System.IO.Directory.CreateDirectory(outputDirectory);
+            }
+
+            if (!System.IO.Directory.Exists(backupDirectory))
+            {
+                System.IO.Directory.CreateDirectory(backupDirectory);
+            }
+
+            IEnumerable<string> files = System.IO.Directory.EnumerateFiles(imagesDirectory, "*.jpg", SearchOption.AllDirectories);
             foreach (string file in files)
             {
                 try
@@ -37,7 +51,7 @@ namespace CameraRollSorter
                         var imageMonth = imageDate.Month;
                         string fullMonthName = imageDate.ToString("MMMM");
                         string fullYear = imageDate.ToString("yyyy");
-                        var yearDir = Path.Combine(imagesDirectory, fullYear);
+                        var yearDir = Path.Combine(outputDirectory, fullYear);
                         if(!System.IO.Directory.Exists(yearDir))
                         {
                             System.IO.Directory.CreateDirectory(yearDir);
@@ -56,7 +70,7 @@ namespace CameraRollSorter
 
                         File.Copy(file, photoFileName);
 
-                        var backupFilename = Path.Combine(@"G:\OlderPictures\Completed", Path.GetFileName(file));
+                        var backupFilename = GetBackupPath(file, backupDirectory);
 
                         Trace.WriteLine($"Moving {file} to {backupFilename}");
                         File.Move(file, backupFilename);
@@ -117,6 +131,20 @@ namespace CameraRollSorter
             }
 
             return imageDateTime;
+        }
+
+        public static string GetBackupPath(string file, string destination)
+        {
+            string sourceRoot = Path.GetPathRoot(file);
+            file = file.Replace(sourceRoot, "");
+            string destPath = Path.Combine(destination, file);
+            var destDir = Path.GetDirectoryName(destPath);
+            if (!System.IO.Directory.Exists(destDir))
+            {
+                // this will create the whole path
+                System.IO.Directory.CreateDirectory(destDir);
+            }
+            return destPath;
         }
     }
 }
